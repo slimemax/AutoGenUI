@@ -7,14 +7,14 @@ import threading
 import queue
 
 client = anthropic.Anthropic(
-    api_key=os.environ.get("ANTHROPIC_API_KEY", "COPY-PASTE-YOUR-ANTHROPIC-KEY-HERE")
+    api_key=os.environ.get("ANTHROPIC_API_KEY", "COPY-PASTE-YOUR-ANTHROPIC-API-KEY-HERE")
 )
 
 class App:
     def __init__(self, master):
         self.master = master
         master.title("Claude Auto Script Generator")
-        master.geometry("1000x800")
+        master.geometry("800x800")  # Adjusted the window size to remove empty space
         master.configure(bg='black')
 
         self.iteration = 0
@@ -33,6 +33,7 @@ class App:
         style.configure('Black.TFrame', background='black')
         style.configure('Red.TLabel', foreground='red', background='black')
         style.configure('Red.TButton', foreground='red', background='black')
+        style.configure('Red.TCombobox', foreground='red', background='black')
 
         # First Prompt
         ttk.Label(self.frame, text="First Prompt:", style='Red.TLabel').grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -56,20 +57,27 @@ Please provide the full improved code. Give only the code and nothing else.""")
         self.max_iterations.grid(row=4, column=1, sticky=tk.W, pady=5)
         self.max_iterations.insert(0, "5")  # Default value
 
+        # File Type Selection
+        ttk.Label(self.frame, text="Select File Type:", style='Red.TLabel').grid(row=5, column=0, sticky=tk.W, pady=5)
+        self.file_type = ttk.Combobox(self.frame, values=["html", "py", "js", "css", "txt"], style='Red.TCombobox')
+        self.file_type.grid(row=5, column=1, sticky=tk.W, pady=5)
+        self.file_type.set("html")  # Default value
+
         self.start_button = ttk.Button(self.frame, text="Start", command=self.start, style='Red.TButton')
-        self.start_button.grid(row=5, column=0, pady=5)
+        self.start_button.grid(row=6, column=0, pady=5)
 
         self.stop_button = ttk.Button(self.frame, text="Stop", command=self.stop, state=tk.DISABLED, style='Red.TButton')
-        self.stop_button.grid(row=5, column=1, pady=5)
+        self.stop_button.grid(row=6, column=1, pady=5)
 
         self.iteration_label = ttk.Label(self.frame, text="Iteration: 0", style='Red.TLabel')
-        self.iteration_label.grid(row=6, column=0, columnspan=2, pady=5)
+        self.iteration_label.grid(row=7, column=0, columnspan=2, pady=5)
 
         self.timer_label = ttk.Label(self.frame, text="Time: 0s", style='Red.TLabel')
-        self.timer_label.grid(row=7, column=0, columnspan=2, pady=5)
+        self.timer_label.grid(row=8, column=0, columnspan=2, pady=5)
 
-        self.preview = scrolledtext.ScrolledText(self.frame, wrap=tk.WORD, width=80, height=30, bg='black', fg='red')
-        self.preview.grid(row=8, column=0, columnspan=2, pady=5)
+        self.preview = scrolledtext.ScrolledText(self.frame, wrap=tk.WORD, width=80, height=20, bg='black', fg='red')
+        self.preview.grid(row=9, column=0, columnspan=2, pady=5)
+
     def start(self):
         self.running = True
         self.start_button.config(state=tk.DISABLED)
@@ -92,13 +100,13 @@ Please provide the full improved code. Give only the code and nothing else.""")
             self.iteration += 1
             self.queue.put(("iteration", self.iteration))
             self.log(f"Starting iteration {self.iteration}")
-            
+
             prompt = self.get_prompt()
             self.log(f"Generated prompt for iteration {self.iteration}")
-            
+
             self.log("Calling Claude API...")
             code = self.call_claude_api(prompt)
-            
+
             if code:
                 self.log("Received response from Claude API")
                 self.save_code_to_file(code)
@@ -107,10 +115,10 @@ Please provide the full improved code. Give only the code and nothing else.""")
                 self.queue.put(("preview", f"Generated code:\n\n{preview}"))
             else:
                 self.log("No code received from Claude API")
-            
+
             elapsed_time = int(time.time() - start_time)
             self.queue.put(("timer", elapsed_time))
-            
+
             self.master.after(100, self.process_queue)
             self.log("Waiting 30 seconds before next iteration...")
             time.sleep(30)
@@ -129,7 +137,10 @@ Please provide the full improved code. Give only the code and nothing else.""")
             elif msg[0] == "preview":
                 self.preview.delete(1.0, tk.END)
                 self.preview.insert(tk.END, msg[1])
-
+            elif msg[0] == "log":
+                current_log = self.preview.get("1.0", tk.END)
+                self.preview.delete(1.0, tk.END)
+                self.preview.insert(tk.END, f"{current_log}\n[LOG] {msg[1]}")
 
     def get_prompt(self):
         if self.iteration == 1:
@@ -159,28 +170,28 @@ Please provide the full improved code. Give only the code and nothing else.""")
             )
             self.log("Received response from Claude API")
             content = response.content[0].text if response.content else ""
-            
-            # Extract only the code part from the response
-            code_start = content.find("```html")
-            code_end = content.rfind("```")
-            if code_start != -1 and code_end != -1:
-                code = content[code_start+7:code_end].strip()
-            else:
-                code = content  # If no code blocks found, use the entire content
-            
+
+            # Extract only the code part from the response and remove any ``` markers
+            code = self.clean_code(content)
             self.log(f"Extracted code. Length: {len(code)} characters")
             return code
         except Exception as e:
             self.log(f"Error calling Claude API: {e}")
             return None
 
+    def clean_code(self, content):
+        # Remove ``` markers and any leading language identifiers
+        cleaned_code = content.replace("```python", "").replace("```", "").strip()
+        return cleaned_code
+
     def save_code_to_file(self, code):
         if not code:
             self.log("No code to save.")
             return
-        
+
         self.log(f"Attempting to save code. Length: {len(code)} characters")
-        filename = f"{self.iteration}.html"
+        file_extension = self.file_type.get()
+        filename = f"{self.iteration}.{file_extension}"
         try:
             with open(filename, 'w', encoding='utf-8') as file:
                 file.write(code)
@@ -189,7 +200,7 @@ Please provide the full improved code. Give only the code and nothing else.""")
             self.log(f"Error saving file: {e}")
 
     def log(self, message):
-        self.queue.put(("preview", f"{self.preview.get('1.0', tk.END)}\n[LOG] {message}"))
+        self.queue.put(("log", message))
         print(f"[LOG] {message}")
 
 def main():
