@@ -1,4 +1,5 @@
 import anthropic
+import os
 import time
 import tkinter as tk
 from tkinter import ttk, scrolledtext
@@ -6,7 +7,7 @@ import threading
 import queue
 
 client = anthropic.Anthropic(
-    api_key="YOUR-API-KEY"
+    api_key=os.environ.get("ANTHROPIC_API_KEY", "COPY-PASTE-YOUR-ANTHROPIC-KEY-HERE")
 )
 
 class App:
@@ -37,15 +38,15 @@ class App:
         ttk.Label(self.frame, text="First Prompt:", style='Red.TLabel').grid(row=0, column=0, sticky=tk.W, pady=5)
         self.first_prompt = scrolledtext.ScrolledText(self.frame, wrap=tk.WORD, width=80, height=5, bg='black', fg='red')
         self.first_prompt.grid(row=1, column=0, columnspan=2, pady=5)
-        self.first_prompt.insert(tk.END, """Create a well-commented secure P2P chat application using Python and the PyQt5 library for the GUI. Make use of the extended output capacity to create a more complex and feature-rich windows 95 menu and layout with bright coloring. Give only the code and nothing else.""")
+        self.first_prompt.insert(tk.END, """Create a well-commented HTML GUI I can use with my API key, have lots of functions. Give only the RAW code and nothing else.""")
 
         # Follow-up Prompt
         ttk.Label(self.frame, text="Follow-up Prompt:", style='Red.TLabel').grid(row=2, column=0, sticky=tk.W, pady=5)
         self.followup_prompt = scrolledtext.ScrolledText(self.frame, wrap=tk.WORD, width=80, height=5, bg='black', fg='red')
         self.followup_prompt.grid(row=3, column=0, columnspan=2, pady=5)
-        self.followup_prompt.insert(tk.END, """Improve the following code for a secure P2P chat application. Fix any bugs or errors you detect, optimize the code, and add new functionality or features. Take advantage of the extended output capacity to implement more advanced features or optimizations. Here's the current code:
+        self.followup_prompt.insert(tk.END, """Improve the following code. Fix any bugs or errors you detect, optimize the code, and add new functionality or features. Take advantage of the extended output capacity to implement more advanced features or optimizations. Here's the current code:
 
-{code}
+{{code}}
 
 Please provide the full improved code. Give only the code and nothing else.""")
 
@@ -69,42 +70,53 @@ Please provide the full improved code. Give only the code and nothing else.""")
 
         self.preview = scrolledtext.ScrolledText(self.frame, wrap=tk.WORD, width=80, height=30, bg='black', fg='red')
         self.preview.grid(row=8, column=0, columnspan=2, pady=5)
-
     def start(self):
         self.running = True
         self.start_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
         self.iteration = 0
+        self.log("Starting the process...")
         threading.Thread(target=self.run, daemon=True).start()
 
     def stop(self):
         self.running = False
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
+        self.log("Process stopped.")
 
     def run(self):
         start_time = time.time()
         max_iterations = int(self.max_iterations.get())
+        self.log(f"Max iterations set to: {max_iterations}")
         while self.running and self.iteration < max_iterations:
             self.iteration += 1
             self.queue.put(("iteration", self.iteration))
+            self.log(f"Starting iteration {self.iteration}")
             
             prompt = self.get_prompt()
+            self.log(f"Generated prompt for iteration {self.iteration}")
+            
+            self.log("Calling Claude API...")
             code = self.call_claude_api(prompt)
             
             if code:
+                self.log("Received response from Claude API")
                 self.save_code_to_file(code)
-                self.code = code
+                self.code = code  # Update the current code
                 preview = code[:1000] + "..." if len(code) > 1000 else code
-                self.queue.put(("preview", preview))
+                self.queue.put(("preview", f"Generated code:\n\n{preview}"))
+            else:
+                self.log("No code received from Claude API")
             
             elapsed_time = int(time.time() - start_time)
             self.queue.put(("timer", elapsed_time))
             
             self.master.after(100, self.process_queue)
-            time.sleep(60)
+            self.log("Waiting 30 seconds before next iteration...")
+            time.sleep(30)
 
         if self.iteration >= max_iterations:
+            self.log("Reached maximum iterations. Stopping.")
             self.stop()
 
     def process_queue(self):
@@ -118,14 +130,19 @@ Please provide the full improved code. Give only the code and nothing else.""")
                 self.preview.delete(1.0, tk.END)
                 self.preview.insert(tk.END, msg[1])
 
+
     def get_prompt(self):
         if self.iteration == 1:
-            return self.first_prompt.get("1.0", tk.END).strip()
+            prompt = self.first_prompt.get("1.0", tk.END).strip()
         else:
-            return self.followup_prompt.get("1.0", tk.END).strip().format(code=self.code)
+            followup_template = self.followup_prompt.get("1.0", tk.END).strip()
+            prompt = followup_template.replace("{{code}}", self.code)
+        self.log(f"Prompt for iteration {self.iteration}:\n{prompt[:100]}...")
+        return prompt
 
     def call_claude_api(self, prompt):
         try:
+            self.log("Sending request to Claude API...")
             response = client.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=4096,
@@ -135,25 +152,45 @@ Please provide the full improved code. Give only the code and nothing else.""")
                         "role": "user",
                         "content": prompt
                     }
-                ]
+                ],
+                extra_headers={
+                    "anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"
+                }
             )
+            self.log("Received response from Claude API")
             content = response.content[0].text if response.content else ""
-            return content
+            
+            # Extract only the code part from the response
+            code_start = content.find("```html")
+            code_end = content.rfind("```")
+            if code_start != -1 and code_end != -1:
+                code = content[code_start+7:code_end].strip()
+            else:
+                code = content  # If no code blocks found, use the entire content
+            
+            self.log(f"Extracted code. Length: {len(code)} characters")
+            return code
         except Exception as e:
-            print(f"Error calling Claude API: {e}")
+            self.log(f"Error calling Claude API: {e}")
             return None
 
     def save_code_to_file(self, code):
         if not code:
-            print("No code to save.")
+            self.log("No code to save.")
             return
-        filename = f"generated_script_{self.iteration}.py"
+        
+        self.log(f"Attempting to save code. Length: {len(code)} characters")
+        filename = f"{self.iteration}.html"
         try:
             with open(filename, 'w', encoding='utf-8') as file:
                 file.write(code)
-            print(f"Saved code to {filename}")
+            self.log(f"Saved code to {filename}")
         except Exception as e:
-            print(f"Error saving file: {e}")
+            self.log(f"Error saving file: {e}")
+
+    def log(self, message):
+        self.queue.put(("preview", f"{self.preview.get('1.0', tk.END)}\n[LOG] {message}"))
+        print(f"[LOG] {message}")
 
 def main():
     root = tk.Tk()
