@@ -9,6 +9,7 @@ Claude Auto Script Generator is a Python application that uses the Anthropic Cla
 - Real-time preview of generated code
 - Automatic code saving for each iteration
 - Sleek black and red interface design
+- Supports multiple file types (html, py, js, css, txt)
 
 ## Requirements
 
@@ -20,22 +21,32 @@ Claude Auto Script Generator is a Python application that uses the Anthropic Cla
 
 1. Clone this repository:
 
-git clone https://github.com/your-username/claude-auto-script-generator.git
+    ```sh
+    git clone https://github.com/slimemax/AutoGenUI/tree/main
+    ```
 2. Navigate to the project directory:
 
-cd claude-auto-script-generator
+    ```sh
+    cd AutoGenUI
+    ```
 3. Install the required packages:
 
-pip install anthropic
+    ```sh
+    pip install anthropic
+    ```
+
 ## Usage
 
 1. Run the script:
 
-python autogen.py
+    ```sh
+    python autogen.py
+    ```
 2. Enter your desired prompts in the "First Prompt" and "Follow-up Prompt" text areas.
 3. Set the maximum number of iterations.
-4. Click "Start" to begin the code generation process.
-5. The generated code will be saved in separate files for each iteration.
+4. Select the desired file type for the generated code.
+5. Click "Start" to begin the code generation process.
+6. The generated code will be saved in separate files for each iteration.
 
 ## Note
 
@@ -48,3 +59,14 @@ This application requires an Anthropic API key to function. Make sure to replace
 ## Disclaimer
 
 This tool is for educational and experimental purposes only. Always review and test any generated code before using it in a production environment.
+
+## Changelog
+
+### V3 Autogen
+
+- Added support for multiple file types (html, py, js, css, txt)
+- Enhanced logging functionality
+- Improved user interface and usability
+- Optimized code generation process
+- Included error handling for API calls and file saving
+
